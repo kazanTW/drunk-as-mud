@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0"
+  />
+
+  <title>叫號台</title>
+
+  <link
+    rel="stylesheet"
+    href="/style.css"
+  />
+</head>
+
+<body>
+
+<main class="container wide">
+
+  <section
+    id="connectionBanner"
+    class="banner hidden"
+  >
+    連線中斷，正在嘗試重新連線……
+  </section>
+
+  <div class="admin-header">
+
+    <div>
+      <h1>叫號台</h1>
+
+      <p class="muted">
+        等待中：
+        <strong id="waitingCount">
+          0
+        </strong>
+      </p>
+    </div>
+
+  </div>
+
+  <section class="card">
+
+    <h2>等待中</h2>
+
+    <div
+      id="waitingOrders"
+      class="orders"
+    ></div>
+
+  </section>
+
+  <section class="card">
+
+    <h2>已叫號</h2>
+
+    <div
+      id="calledOrders"
+      class="orders"
+    ></div>
+
+  </section>
+
+</main>
+
+<script src="/call.js"></script>
+
+</body>
+</html>
