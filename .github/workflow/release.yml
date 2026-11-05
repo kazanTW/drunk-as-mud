@@ -1,0 +1,288 @@
+name: Build and Release
+
+on:
+  workflow_dispatch:
+
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: read
+
+
+jobs:
+  verify:
+    name: Verify source
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+
+      - name: Verify tag matches package version
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        run: |
+          PACKAGE_VERSION="$(node -p "require('./package.json').version")"
+          EXPECTED_TAG="v${PACKAGE_VERSION}"
+
+          echo "package.json version: ${PACKAGE_VERSION}"
+          echo "Git tag:              ${GITHUB_REF_NAME}"
+
+          if [ "${GITHUB_REF_NAME}" != "${EXPECTED_TAG}" ]; then
+            echo "::error::Tag ${GITHUB_REF_NAME} does not match package.json version ${PACKAGE_VERSION}"
+            exit 1
+          fi
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check server syntax
+        run: node --check server.js
+
+      - name: Check browser JavaScript syntax
+        shell: bash
+        run: |
+          for file in public/*.js; do
+            echo "Checking ${file}"
+            node --check "${file}"
+          done
+
+      - name: Smoke test server
+        shell: bash
+        run: |
+          node server.js > server.log 2>&1 &
+          SERVER_PID=$!
+
+          cleanup() {
+            kill -INT "${SERVER_PID}" 2>/dev/null || true
+            wait "${SERVER_PID}" 2>/dev/null || true
+          }
+
+          trap cleanup EXIT
+
+          for i in {1..10}; do
+            if curl --fail --silent http://127.0.0.1:8080/ > /dev/null; then
+              echo "Server responded successfully."
+              exit 0
+            fi
+
+            sleep 1
+          done
+
+          echo "Server failed to respond."
+          cat server.log
+          exit 1
+
+
+  build:
+    name: Build ${{ matrix.platform }}
+    needs: verify
+
+    strategy:
+      fail-fast: false
+
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            platform: linux-x64
+
+          - runner: windows-2025
+            platform: windows-x64
+
+          - runner: macos-15-intel
+            platform: macos-x64
+
+          - runner: macos-15
+            platform: macos-arm64
+
+    runs-on: ${{ matrix.runner }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+
+      - name: Install production dependencies
+        run: npm ci --omit=dev
+
+
+      #
+      # Linux / macOS
+      #
+
+      - name: Build Unix portable package
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          VERSION="$(node -p "require('./package.json').version")"
+          NAME="drunk-as-mud-v${VERSION}-${{ matrix.platform }}"
+          PACKAGE_DIR="dist/${NAME}"
+
+          mkdir -p "${PACKAGE_DIR}/runtime"
+
+          NODE_PATH="$(node -p "process.execPath")"
+
+          cp "${NODE_PATH}" \
+            "${PACKAGE_DIR}/runtime/node"
+
+          cp server.js \
+            menu.json \
+            package.json \
+            package-lock.json \
+            README.md \
+            LICENSE \
+            "${PACKAGE_DIR}/"
+
+          cp -R public \
+            "${PACKAGE_DIR}/public"
+
+          cp -R node_modules \
+            "${PACKAGE_DIR}/node_modules"
+
+          if [[ "${{ matrix.platform }}" == macos-* ]]; then
+            cp release/start.command \
+              "${PACKAGE_DIR}/start.command"
+
+            chmod +x \
+              "${PACKAGE_DIR}/start.command"
+          else
+            cp release/start.sh \
+              "${PACKAGE_DIR}/start.sh"
+
+            chmod +x \
+              "${PACKAGE_DIR}/start.sh"
+          fi
+
+          chmod +x \
+            "${PACKAGE_DIR}/runtime/node"
+
+          (
+            cd dist
+
+            zip -r \
+              "${NAME}.zip" \
+              "${NAME}"
+          )
+
+
+      #
+      # Windows
+      #
+
+      - name: Build Windows portable package
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $version = node -p "require('./package.json').version"
+          $name = "drunk-as-mud-v$version-${{ matrix.platform }}"
+
+          $packageDir = Join-Path "dist" $name
+          $runtimeDir = Join-Path $packageDir "runtime"
+
+          New-Item `
+            -ItemType Directory `
+            -Force `
+            -Path $runtimeDir |
+            Out-Null
+
+          $nodePath = node -p "process.execPath"
+
+          Copy-Item `
+            $nodePath `
+            (Join-Path $runtimeDir "node.exe")
+
+          Copy-Item `
+            server.js,
+            menu.json,
+            package.json,
+            package-lock.json,
+            README.md,
+            LICENSE `
+            $packageDir
+
+          Copy-Item `
+            public `
+            (Join-Path $packageDir "public") `
+            -Recurse
+
+          Copy-Item `
+            node_modules `
+            (Join-Path $packageDir "node_modules") `
+            -Recurse
+
+          Copy-Item `
+            release/start.bat `
+            (Join-Path $packageDir "start.bat")
+
+          Push-Location dist
+
+          Compress-Archive `
+            -Path $name `
+            -DestinationPath "$name.zip"
+
+          Pop-Location
+
+
+      - name: Upload portable package
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.platform }}
+          path: dist/*.zip
+          if-no-files-found: error
+          compression-level: 0
+
+
+  release:
+    name: Create draft release
+
+    if: startsWith(github.ref, 'refs/tags/v')
+
+    needs:
+      - build
+
+    runs-on: ubuntu-24.04
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download portable packages
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+
+      - name: Show release assets
+        shell: bash
+        run: |
+          find release-assets \
+            -maxdepth 1 \
+            -type f \
+            -print
+
+      - name: Create draft GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create \
+            "${GITHUB_REF_NAME}" \
+            release-assets/*.zip \
+            --repo "${GITHUB_REPOSITORY}" \
+            --title "drunk-as-mud ${GITHUB_REF_NAME}" \
+            --generate-notes \
+            --verify-tag \
+            --draft
