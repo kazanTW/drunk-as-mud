@@ -17,12 +17,27 @@
       <h1>點餐</h1>
       <p class="muted">一張訂單只能選擇一個品項。</p>
       <div id="menu" class="menu-grid"></div>
+
+      <div class="note-field">
+        <div class="note-label-row">
+          <label for="noteInput">附註</label>
+          <span>（選填，最多 100 字）</span>
+
+        <textarea
+          id="noteInput"
+          maxlength="100"
+          rows="3"
+          placeholder="例如：少冰"
+        ></textarea>
+      </div>
+
     </section>
 
     <section id="ticketPage" class="card center hidden">
       <p class="muted">你的號碼</p>
       <div id="number" class="number">--</div>
       <h2 id="item"></h2>
+      <p id="note" class="muted"></p>
       <p id="status" class="status">請留意叫號</p>
       <button id="newOrderBtn" class="secondary hidden">重新點餐</button>
     </section>

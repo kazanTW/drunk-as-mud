@@ -1,6 +1,8 @@
 const menuElement = document.querySelector("#menu");
 const orderPage = document.querySelector("#orderPage");
 const ticketPage = document.querySelector("#ticketPage");
+const noteInput = document.querySelector("#noteInput");
+const orderNote = document.querySelector("#orderNote");
 const numberElement = document.querySelector("#number");
 const itemElement = document.querySelector("#item");
 const statusElement = document.querySelector("#status");
@@ -130,11 +132,21 @@ function renderMenu(menu) {
 function confirmOrder(item) {
   if (currentOrder && currentOrder.status !== "finished") return;
 
-  if (!window.confirm(`確認要點「${item}」嗎？`)) return;
+  const note = noteInput ? noteInput.value.trim() : "";
+
+  const message = note ? `確認要點「${item}」嗎？\n\n備註：${note}` : `確認要點「${item}」嗎？`;
+
+  if (!window.confirm(message)) return;
+
+  if (!ws || ws.readyState !== WebSocket.OPEN) {
+    alert("無法連線到伺服器，請稍後再試。");
+    return;
+  }
 
   ws.send(JSON.stringify({
     type: "order",
     item,
+    note,
     clientId
   }));
 }
@@ -145,6 +157,16 @@ function showTicket(order) {
 
   numberElement.textContent = order.id;
   itemElement.textContent = order.item;
+
+  if (orderNote) {
+    if (order.note) {
+      orderNote.textContent = `備註：${order.note}`;
+      orderNote.classList.remove("hidden");
+    } else {
+      orderNote.textContent = "";
+      orderNote.classList.add("hidden");
+    }
+  }
 
   if (order.status === "waiting") {
     document.body.classList.remove("called");

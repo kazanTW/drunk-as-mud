@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0"
+  />
+
+  <meta
+    name="theme-color"
+    content="#111827"
+  />
+
+  <title>叫號看板</title>
+
+  <link
+    rel="stylesheet"
+    href="/style.css"
+  />
+</head>
+
+<body class="display-body">
+
+  <main class="display-screen">
+    <div
+      id="audioUnlock"
+      class="audio-unlock"
+    >
+      <button
+        id="audioUnlockButton"
+        type="button"
+      >
+        啟用叫號音效
+      </button>
+
+      <p>
+        點一下以允許瀏覽器播放叫號音效
+      </p>
+    </div>
+
+    <section class="display-current">
+
+      <div class="display-label">
+        請取餐
+      </div>
+
+      <div
+        id="displayNumber"
+        class="display-number"
+      >
+        --
+      </div>
+
+      <div
+        id="displayItem"
+        class="display-item"
+      >
+        等待叫號
+      </div>
+
+    </section>
+
+    <section class="display-history">
+
+      <h2>
+        最近叫號
+      </h2>
+
+      <div
+        id="displayHistory"
+        class="display-history-list"
+      ></div>
+
+    </section>
+
+    <div
+      id="displayConnection"
+      class="display-connection hidden"
+    >
+      連線中斷，正在重新連線……
+    </div>
+
+  </main>
+
+  <audio
+    id="displayDing"
+    src="/ding.wav"
+    preload="auto"
+  ></audio>
+
+  <script src="/display.js"></script>
+
+</body>
+</html>

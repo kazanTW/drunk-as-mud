@@ -1,190 +1,183 @@
-const waitingOrdersEl =
-  document.querySelector("#waitingOrders");
-
-const calledOrdersEl =
-  document.querySelector("#calledOrders");
-
-const waitingCountEl =
-  document.querySelector("#waitingCount");
-
-const connectionBanner =
-  document.querySelector("#connectionBanner");
+const waitingOrdersEl = document.querySelector("#waitingOrders");
+const calledOrdersEl = document.querySelector("#calledOrders");
+const waitingCountEl = document.querySelector("#waitingCount");
+const connectionBanner = document.querySelector("#connectionBanner");
+const PIN_KEY = "drunk-as-mud-call-pin";
 
 let orders = [];
-
 let ws = null;
-
 let reconnectTimer = null;
+let authenticated = false;
 
 function connect() {
-
   const protocol =
     location.protocol === "https:"
       ? "wss"
       : "ws";
 
-  ws = new WebSocket(
-    `${protocol}://${location.host}`
-  );
+  ws = new WebSocket(`${protocol}://${location.host}`);
 
   ws.addEventListener(
     "open",
     () => {
-
-      connectionBanner
-        .classList
-        .add("hidden");
-
+      connectionBanner.classList.add("hidden");
+      authenticated = false;
+      authenticate();
     }
   );
 
   ws.addEventListener(
     "close",
     () => {
-
-      connectionBanner
-        .classList
-        .remove("hidden");
-
-      clearTimeout(
-        reconnectTimer
-      );
-
-      reconnectTimer =
-        setTimeout(
-          connect,
-          1500
-        );
-
+      authenticated = false;
+      connectionBanner.classList.remove("hidden");
+      clearTimeout(reconnectTimer);
+      reconnectTimer = setTimeout(connect, 1500);
     }
   );
 
   ws.addEventListener(
     "message",
     (event) => {
+      let data;
 
-      const data =
-        JSON.parse(
-          event.data
-        );
-
-      if (
-        data.type === "init"
-      ) {
-
-        orders =
-          data.orders;
-
-        render();
-
+      try {
+        data = JSON.parse(event.data);
+      } catch {
         return;
-
       }
 
-      if (
-        data.type ===
-        "new-order"
-      ) {
-
-        const exists =
-          orders.some(
-            (order) =>
-              order.id ===
-              data.order.id
-          );
-
-        if (!exists) {
-          orders.push(
-            data.order
-          );
-        }
-
-        render();
-
-        return;
-
-      }
-
-      if (
-        data.type ===
-        "called"
-      ) {
-
-        updateOrder(
-          data.order
-        );
-
-        render();
-
-        return;
-
-      }
-
-      if (
-        data.type ===
-        "finished"
-      ) {
-
-        updateOrder(
-          data.order
-        );
-
-        render();
-
-        return;
-
-      }
-
-      if (
-        data.type ===
-        "orders-cleared"
-      ) {
-
-        orders = [];
-
-        render();
-
-      }
-
+      handleMessage(data);
     }
   );
-
 }
 
-function updateOrder(
-  updated
-) {
+function getPin() {
+  let pin = sessionStorage.getItem(PIN_KEY);
 
-  const index =
-    orders.findIndex(
-      (order) =>
-        order.id ===
-        updated.id
-    );
-
-  if (index !== -1) {
-
-    orders[index] =
-      updated;
-
+  if (pin) {
+    return pin;
   }
 
+  pin = window.prompt("請輸入叫號台 PIN");
+
+  if (!pin) {
+    return null;
+  }
+
+  pin = pin.trim();
+
+  if (!pin) {
+    return null;
+  }
+
+  sessionStorage.setItem(PIN_KEY, pin);
+
+  return pin;
+}
+
+function authenticate() {
+  if (!ws || ws.readyState !== WebSocket.OPEN) {
+    return;
+  }
+
+  const pin = getPin();
+
+  if (!pin) {
+    return;
+  }
+
+  ws.send(
+    JSON.stringify({
+      type: "auth",
+      role: "call",
+      pin
+    })
+  );
+}
+
+function handleMessage(data) {
+  if (data.type === "auth-result") {
+    handleAuthResult(data);
+    return;
+  }
+
+  if (data.type === "console-state") {
+    orders =
+      Array.isArray(data.orders)
+        ? data.orders
+        : [];
+
+    render();
+    return;
+  }
+
+  if (data.type === "new-order") {
+    const exists =
+      orders.some(
+        (order) =>
+          order.id === data.order.id
+      );
+
+    if (!exists) {
+      orders.push(data.order);
+    }
+    render();
+    return;
+  }
+
+  if (data.type === "called") {
+    updateOrder(data.order);
+    render();
+    return;
+  }
+
+  if (data.type === "finished") {
+    updateOrder(data.order);
+    render();
+    return;
+  }
+
+  if (data.type === "orders-cleared") {
+    orders = [];
+    render();
+    return;
+  }
+}
+
+function handleAuthResult(data) {
+  if (data.ok && data.role === "call") {
+    authenticated = true;
+    ws.send(JSON.stringify({type: "get-console-state"}));
+    return;
+  }
+
+  authenticated = false;
+  sessionStorage.removeItem(PIN_KEY);
+  window.alert("叫號台 PIN 錯誤");
+  setTimeout(() => authenticate(), 0);
+}
+
+function updateOrder(updated) {
+  const index = orders.findIndex((order) => order.id === updated.id);
+
+  if (index !== -1) {
+    orders[index] = updated;
+  } else {
+    orders.push(updated);
+  }
 }
 
 function render() {
-
   renderOrders();
-
 }
 
 function renderOrders() {
-
   const waiting =
     orders
       .filter(
         (order) =>
-          order.status ===
-          "waiting"
+          order.status === "waiting"
       )
       .sort(
         (a, b) =>
@@ -195,213 +188,144 @@ function renderOrders() {
     orders
       .filter(
         (order) =>
-          order.status ===
-          "called"
+          order.status === "called"
       )
       .sort(
         (a, b) =>
           a.id - b.id
       );
 
-  waitingCountEl
-    .textContent =
-      waiting.length;
+  waitingCountEl.textContent = waiting.length;
+  waitingOrdersEl.innerHTML = "";
+  calledOrdersEl.innerHTML = "";
 
-  waitingOrdersEl
-    .innerHTML = "";
-
-  calledOrdersEl
-    .innerHTML = "";
-
-  if (
-    waiting.length === 0
-  ) {
-
-    waitingOrdersEl
-      .innerHTML =
-      `
-        <p class="muted">
-          目前沒有等待中的訂單。
-        </p>
-      `;
-
+  if (waiting.length === 0) {
+    waitingOrdersEl.innerHTML =
+      `<p class="muted">
+        目前沒有等待中的訂單。
+      </p>`;
   }
 
   for (
     const order
     of waiting
   ) {
-
     waitingOrdersEl
       .appendChild(
         makeOrderRow(
           order,
           [
-            [
-              "叫號",
-              "call",
-              ""
-            ]
+            {
+              label: "叫號",
+              type: "call",
+              className: ""
+            }
           ]
         )
       );
-
   }
 
-  if (
-    called.length === 0
-  ) {
-
-    calledOrdersEl
-      .innerHTML =
-      `
-        <p class="muted">
-          目前沒有已叫號訂單。
-        </p>
-      `;
-
+  if (called.length === 0) {
+    calledOrdersEl.innerHTML =
+      `<p class="muted">
+        目前沒有已叫號訂單。
+      </p>`;
   }
 
   for (
     const order
     of called
   ) {
-
     calledOrdersEl
       .appendChild(
         makeOrderRow(
           order,
           [
-            [
-              "重新叫號",
-              "recall",
-              "secondary"
-            ],
-
-            [
-              "完成",
-              "finish",
-              ""
-            ]
+            {
+              label:
+                "重新叫號",
+              type: "recall",
+              className:
+                "secondary"
+            },
+            {
+              label: "完成",
+              type: "finish",
+              className: ""
+            }
           ]
         )
       );
-
   }
-
 }
 
-function makeOrderRow(
-  order,
-  actions
-) {
+function makeOrderRow(order, actions) {
+  const row = document.createElement("div");
+  row.className = "order";
 
-  const row =
-    document
-      .createElement(
-        "div"
-      );
+  const no = document.createElement("strong");
+  no.textContent = `#${order.id}`;
 
-  row.className =
-    "order";
+  const itemBox = document.createElement("div");
+  const itemName = document.createElement("div");
+  itemName.textContent = order.item;
+  itemBox.appendChild(itemName);
 
-  const no =
-    document
-      .createElement(
-        "strong"
-      );
+  if (order.note) {
+    const note = document.createElement("small");
 
-  no.textContent =
-    `#${order.id}`;
-
-  const item =
-    document
-      .createElement(
-        "span"
-      );
-
-  item.textContent =
-    order.item;
-
-  const actionBox =
-    document
-      .createElement(
-        "div"
-      );
-
-  actionBox.className =
-    "action-box";
-
-  for (
-    const [
-      label,
-      type,
-      className
-    ]
-    of actions
-  ) {
-
-    const button =
-      document
-        .createElement(
-          "button"
-        );
-
-    button.textContent =
-      label;
-
-    if (
-      className
-    ) {
-
-      button.className =
-        className;
-
-    }
-
-    button
-      .addEventListener(
-        "click",
-        () => {
-
-          if (
-            !ws ||
-            ws.readyState !==
-              WebSocket.OPEN
-          ) {
-
-            return;
-
-          }
-
-          ws.send(
-            JSON.stringify(
-              {
-                type,
-                id:
-                  order.id
-              }
-            )
-          );
-
-        }
-      );
-
-    actionBox
-      .appendChild(
-        button
-      );
-
+    note.className = "order-note";
+    note.textContent = `附註：${order.note}`;
+    itemBox.appendChild(note);
   }
 
-  row.append(
-    no,
-    item,
-    actionBox
-  );
+  const actionBox = document.createElement("div");
+  actionBox.className = "action-box";
 
+  for (
+    const action
+    of actions
+  ) {
+    const button = document.createElement("button");
+    button.textContent = action.label;
+
+    if (action.className) {
+      button.className = action.className;
+    }
+
+    button.addEventListener("click",
+      () => {
+        sendAction(
+          action.type,
+          order.id
+        );
+      }
+    );
+
+    actionBox.appendChild(button);
+  }
+
+  row.append(no, itemBox, actionBox);
   return row;
+}
 
+function sendAction(type, id) {
+  if (!authenticated) {
+    window.alert("尚未登入叫號台。");
+    return;
+  }
+
+  if (!ws || ws.readyState !== WebSocket.OPEN) {
+    window.alert("目前未連線，請稍後再試。");
+    return;
+  }
+
+  ws.send(
+    JSON.stringify({
+      type,
+      id
+    })
+  );
 }
 
 connect();
