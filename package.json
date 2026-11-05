@@ -1,11 +1,14 @@
 {
-  "name": "order-calling-system",
-  "version": "1.0.0",
+  "name": "drunk-as-mud",
+  "version": "0.1.0",
   "private": true,
-  "description": "Simple LAN order and calling system",
+  "description": "Portable event ordering and calling system",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=20"
   },
   "dependencies": {
     "ws": "^8.18.0"
