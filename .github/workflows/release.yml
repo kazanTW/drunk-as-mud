@@ -169,13 +169,18 @@ jobs:
           chmod +x \
             "${PACKAGE_DIR}/runtime/node"
 
-          (
-            cd dist
+          if [[ "${{ matrix.platform }}" == macos-* ]]; then
+            ditto -c -k \
+              --sequesterRsrc --keepParent \
+              "${PACKAGE_DIR}" "dist/${NAME}.zip"
+          else
+            (
+              cd dist
 
-            zip -r \
-              "${NAME}.zip" \
-              "${NAME}"
-          )
+              zip -r "${NAME}.zip" "${NAME}"
+            )
+          fi
+
 
 
       #
